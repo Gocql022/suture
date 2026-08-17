@@ -14,7 +14,12 @@ fn workspace_root() -> PathBuf {
 }
 
 fn cli_bin() -> PathBuf {
-    workspace_root().join("target").join("debug").join("suture")
+    let bin = workspace_root().join("target").join("debug").join("suture");
+    if cfg!(windows) {
+        bin.with_extension("exe")
+    } else {
+        bin
+    }
 }
 
 fn suture(dir: &Path, args: &[&str]) -> std::process::Output {
@@ -346,6 +351,10 @@ async fn test_push_pull_roundtrip() {
 
 #[test]
 fn test_hook_pre_commit_passes() {
+    // Hook 脚本是 #!/bin/sh，依赖 POSIX shell，Windows 原生无法执行。
+    if cfg!(windows) {
+        return;
+    }
     let (_tmp, repo) = new_test_repo("hook_pass");
 
     // Create a pre-commit hook that succeeds
@@ -367,6 +376,10 @@ fn test_hook_pre_commit_passes() {
 
 #[test]
 fn test_hook_pre_commit_blocks() {
+    // Hook 脚本是 #!/bin/sh，依赖 POSIX shell，Windows 原生无法执行。
+    if cfg!(windows) {
+        return;
+    }
     let (_tmp, repo) = new_test_repo("hook_block");
 
     // Create a pre-commit hook that fails
@@ -394,6 +407,10 @@ fn test_hook_pre_commit_blocks() {
 
 #[test]
 fn test_hook_post_commit_runs() {
+    // Hook 脚本是 #!/bin/sh，依赖 POSIX shell，Windows 原生无法执行。
+    if cfg!(windows) {
+        return;
+    }
     let (_tmp, repo) = new_test_repo("hook_post");
 
     // Create a post-commit hook that writes a sentinel file
@@ -421,6 +438,10 @@ fn test_hook_post_commit_runs() {
 
 #[test]
 fn test_hook_env_vars() {
+    // Hook 脚本是 #!/bin/sh，依赖 POSIX shell，Windows 原生无法执行。
+    if cfg!(windows) {
+        return;
+    }
     let (_tmp, repo) = new_test_repo("hook_env");
 
     // Create a pre-commit hook that records env vars to a file
@@ -469,6 +490,10 @@ fn test_hook_env_vars() {
 
 #[test]
 fn test_hook_not_executable_skipped() {
+    // Hook 脚本是 #!/bin/sh，依赖 POSIX shell，Windows 原生无法执行。
+    if cfg!(windows) {
+        return;
+    }
     let (_tmp, repo) = new_test_repo("hook_not_exec");
 
     // Create a non-executable pre-commit hook
@@ -495,6 +520,10 @@ fn test_hook_not_executable_skipped() {
 
 #[test]
 fn test_hook_pre_commit_d_directory() {
+    // Hook 脚本是 #!/bin/sh，依赖 POSIX shell，Windows 原生无法执行。
+    if cfg!(windows) {
+        return;
+    }
     let (_tmp, repo) = new_test_repo("hook_d_dir");
 
     // Create hooks in pre-commit.d/ directory

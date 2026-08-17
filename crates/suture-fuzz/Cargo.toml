@@ -4,6 +4,13 @@ version = "5.1.0"
 edition = "2021"
 publish = false
 
+[features]
+# Fuzz targets need a nightly toolchain and the libFuzzer engine, which does
+# not link on Windows MSVC with the current toolchain. Gate them behind a
+# feature so `cargo test`/`check`/`clippy --workspace` skip the bins by default.
+# Build them explicitly with:  cargo build -p suture-fuzz --features fuzz --bins
+fuzz = ["dep:libfuzzer-sys"]
+
 [dependencies]
 suture-core = { path = "../suture-core" }
 suture-common = { path = "../suture-common" }
@@ -13,40 +20,47 @@ suture-driver-yaml = { path = "../suture-driver-yaml" }
 suture-driver-toml = { path = "../suture-driver-toml" }
 serde_json = "1"
 proptest = "1.6"
-libfuzzer-sys = "0.4"
+libfuzzer-sys = { version = "0.4", optional = true }
 regex = "1"
 
 [[bin]]
 name = "fuzz_patch_deserialize"
 path = "fuzz_targets/fuzz_patch_deserialize.rs"
 harness = false
+required-features = ["fuzz"]
 
 [[bin]]
 name = "fuzz_hash_parse"
 path = "fuzz_targets/fuzz_hash_parse.rs"
 harness = false
+required-features = ["fuzz"]
 
 [[bin]]
 name = "fuzz_json_merge"
 path = "fuzz_targets/fuzz_json_merge.rs"
 harness = false
+required-features = ["fuzz"]
 
 [[bin]]
 name = "fuzz_yaml_merge"
 path = "fuzz_targets/fuzz_yaml_merge.rs"
 harness = false
+required-features = ["fuzz"]
 
 [[bin]]
 name = "fuzz_toml_merge"
 path = "fuzz_targets/fuzz_toml_merge.rs"
 harness = false
+required-features = ["fuzz"]
 
 [[bin]]
 name = "fuzz_classification"
 path = "fuzz_targets/fuzz_classification.rs"
 harness = false
+required-features = ["fuzz"]
 
 [[bin]]
 name = "fuzz_diff_input"
 path = "fuzz_targets/fuzz_diff_input.rs"
 harness = false
+required-features = ["fuzz"]

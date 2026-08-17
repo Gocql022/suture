@@ -12,7 +12,12 @@ fn workspace_root() -> PathBuf {
 }
 
 fn cli_bin() -> PathBuf {
-    workspace_root().join("target").join("debug").join("suture")
+    let bin = workspace_root().join("target").join("debug").join("suture");
+    if cfg!(windows) {
+        bin.with_extension("exe")
+    } else {
+        bin
+    }
 }
 
 fn suture(dir: &Path, args: &[&str]) -> std::process::Output {

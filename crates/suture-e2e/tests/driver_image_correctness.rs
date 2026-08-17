@@ -73,9 +73,24 @@ fn image_binary_change_same_metadata_different_pixels() {
     let new = create_png(64, 64, [255, 0, 0]);
 
     let changes = driver.diff_raw(Some(&base), &new).unwrap();
+    // diff_raw reports a `/similarity` change whenever pixel comparison is
+    // possible; metadata changes should be empty for same dimensions and
+    // color type.
+    let metadata_changes: Vec<&SemanticChange> = changes
+        .iter()
+        .filter(|c| !matches!(c, SemanticChange::Modified { path, .. } if path == "/similarity"))
+        .collect();
     assert!(
-        changes.is_empty(),
+        metadata_changes.is_empty(),
         "same dimensions and color type should produce no metadata changes"
+    );
+    let sim = changes
+        .iter()
+        .find(|c| matches!(c, SemanticChange::Modified { path, .. } if path == "/similarity"))
+        .expect("pixel-level change should be reported via /similarity");
+    assert!(
+        matches!(sim, SemanticChange::Modified { new_value, .. } if new_value != "1.0000"),
+        "different pixels should have similarity below 1.0"
     );
 }
 
@@ -182,7 +197,18 @@ fn image_format_diff_no_changes() {
     let img = create_png(16, 16, [0, 0, 0]);
 
     let changes = driver.diff_raw(Some(&img), &img).unwrap();
-    assert!(changes.is_empty());
+    // Identical images report no metadata changes; the `/similarity` entry is
+    // 1.0000 and not a real change.
+    let metadata_changes: Vec<&SemanticChange> = changes
+        .iter()
+        .filter(|c| !matches!(c, SemanticChange::Modified { path, .. } if path == "/similarity"))
+        .collect();
+    assert!(metadata_changes.is_empty());
+    let sim = changes
+        .iter()
+        .find(|c| matches!(c, SemanticChange::Modified { path, .. } if path == "/similarity"))
+        .expect("identical images still report /similarity = 1.0000");
+    assert!(matches!(sim, SemanticChange::Modified { new_value, .. } if new_value == "1.0000"));
 }
 
 #[test]

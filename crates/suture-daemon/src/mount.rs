@@ -4,6 +4,7 @@ use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MountType {
+    #[cfg(unix)]
     Fuse,
     WebDav,
 }
@@ -60,6 +61,7 @@ impl std::error::Error for MountError {}
 pub struct MountManager {
     mounts: HashMap<String, MountPoint>,
     webdav_handles: HashMap<String, tokio::task::JoinHandle<()>>,
+    #[cfg(unix)]
     fuse_manager: suture_vfs::fuse::MountManager,
     repo_path: PathBuf,
     next_id: u64,
@@ -71,6 +73,7 @@ impl MountManager {
         Self {
             mounts: HashMap::new(),
             webdav_handles: HashMap::new(),
+            #[cfg(unix)]
             fuse_manager: suture_vfs::fuse::MountManager::new(),
             repo_path,
             next_id: 1,
@@ -83,6 +86,7 @@ impl MountManager {
         id
     }
 
+    #[cfg(unix)]
     pub fn mount_fuse(&mut self, mount_path: &Path) -> Result<String, MountError> {
         if mount_path.as_os_str().is_empty() {
             return Err(MountError::InvalidPath);
@@ -112,6 +116,13 @@ impl MountManager {
 
         self.mounts.insert(id.clone(), mount_point);
         Ok(id)
+    }
+
+    #[cfg(not(unix))]
+    pub fn mount_fuse(&mut self, _mount_path: &Path) -> Result<String, MountError> {
+        Err(MountError::MountFailed(
+            "FUSE mounts are only supported on Unix".into(),
+        ))
     }
 
     pub fn mount_webdav(&mut self, port: u16) -> Result<String, MountError> {
@@ -154,6 +165,7 @@ impl MountManager {
         let mount = self.mounts.get(mount_id).ok_or(MountError::NotFound)?;
 
         match mount.mount_type {
+            #[cfg(unix)]
             MountType::Fuse => {
                 self.fuse_manager
                     .unmount(&mount.mount_path)
@@ -194,6 +206,7 @@ impl MountManager {
             handle.abort();
         }
 
+        #[cfg(unix)]
         self.fuse_manager.unmount_all();
 
         for mount in self.mounts.values_mut() {

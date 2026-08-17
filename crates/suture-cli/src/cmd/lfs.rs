@@ -900,19 +900,17 @@ mod tests {
 
     #[test]
     fn test_store_and_read_lfs_object() {
+        // 使用 tempdir 绝对路径，避免依赖进程 CWD（与其他测试的
+        // set_current_dir 并行竞争会导致相对路径解析到错误位置）。
+        // lfs_object_path 的路径格式由 test_lfs_object_path 覆盖。
         let dir = tempfile::tempdir().unwrap();
-        let suture_dir = dir
-            .path()
-            .join(".suture")
-            .join("lfs")
-            .join("objects")
-            .join("ab");
-        std::fs::create_dir_all(&suture_dir).unwrap();
+        let objects_dir = dir.path().join(".suture").join("lfs").join("objects");
+        std::fs::create_dir_all(&objects_dir).unwrap();
 
         let hash = "abcdef1234567890";
         let data = b"hello lfs world";
 
-        let path = lfs_object_path(hash);
+        let path = objects_dir.join(&hash[..2]).join(hash);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, data).unwrap();
 
