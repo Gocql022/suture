@@ -146,8 +146,13 @@ impl GlobalConfig {
 mod tests {
     use super::*;
 
+    /// 环境变量测试串行锁：这些测试 set/remove 进程级环境变量
+    /// （SUTURE_USER_NAME 等），并行时互相干扰导致 flaky。
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_load_nonexistent_file_returns_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // Ensure no env vars interfere
         // SAFETY: `std::env::set_var`/`remove_var` is marked unsafe in Rust
         // because it modifies process-global state. This is acceptable here
@@ -195,6 +200,7 @@ rebase = false
 
     #[test]
     fn test_get_dotted_keys() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // SAFETY: `std::env::set_var`/`remove_var` is marked unsafe in Rust
         // because it modifies process-global state. This is acceptable here
         // because tests run in a controlled single-threaded context.
@@ -227,6 +233,7 @@ compression_level = 6
 
     #[test]
     fn test_env_var_override() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let config = GlobalConfig::default();
         // SAFETY: `std::env::set_var`/`remove_var` is marked unsafe in Rust
         // because it modifies process-global state. This is acceptable here
@@ -254,6 +261,7 @@ compression_level = 6
 
     #[test]
     fn test_parse_partial_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // SAFETY: `std::env::set_var`/`remove_var` is marked unsafe in Rust
         // because it modifies process-global state. This is acceptable here
         // because tests run in a controlled single-threaded context.

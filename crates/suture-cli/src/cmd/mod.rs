@@ -66,3 +66,10 @@ pub mod worktree;
 pub fn user_error(ctx: &str, e: impl std::fmt::Display) -> Box<dyn std::error::Error> {
     Box::new(std::io::Error::other(format!("{ctx}: {e}")))
 }
+
+/// 测试共享的 CWD 串行锁：部分测试会 `set_current_dir` 改变进程全局工作目录，
+/// 与并行测试互相干扰（workspace Cargo.toml 注释即提到
+/// "CWD-dependent tests in suture-cli use a mutex guard"）。
+/// 所有会修改 CWD 的测试必须在开头获取此锁。
+#[cfg(test)]
+pub(crate) static TEST_CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

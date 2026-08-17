@@ -1304,9 +1304,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -3811,9 +3811,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -5142,9 +5142,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.40.0"
+version = "0.40.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b7315c86b26aaef0321fba33c9dcc160da659c6a9d278f0f6a5656d6561c03b"
+checksum = "2474bd2e5029e7ccb6abb2ba48cf2383a333851dedf495901544281590c7da7f"
 dependencies = [
  "memchr",
  "serde",
@@ -6373,9 +6373,9 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.9.8"
+version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 
 [[package]]
 name = "spki"
@@ -6690,7 +6690,7 @@ name = "suture-driver-docx"
 version = "5.1.0"
 dependencies = [
  "proptest",
- "quick-xml 0.40.0",
+ "quick-xml 0.40.1",
  "serde",
  "serde_json",
  "suture-driver",
@@ -6786,7 +6786,7 @@ name = "suture-driver-pptx"
 version = "5.1.0"
 dependencies = [
  "proptest",
- "quick-xml 0.40.0",
+ "quick-xml 0.40.1",
  "serde",
  "suture-driver",
  "suture-ooxml",
@@ -6845,7 +6845,7 @@ name = "suture-driver-xlsx"
 version = "5.1.0"
 dependencies = [
  "proptest",
- "quick-xml 0.40.0",
+ "quick-xml 0.40.1",
  "serde",
  "suture-driver",
  "suture-ooxml",
@@ -7010,7 +7010,7 @@ dependencies = [
 name = "suture-ooxml"
 version = "5.1.0"
 dependencies = [
- "quick-xml 0.40.0",
+ "quick-xml 0.40.1",
  "serde",
  "serde_json",
  "suture-driver",

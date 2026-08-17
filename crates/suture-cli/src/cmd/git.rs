@@ -1061,6 +1061,10 @@ mod tests {
 
     #[test]
     fn test_install_uninstall_flow() {
+        // 该测试修改进程级 CWD，必须与同样改 CWD 的测试串行（见 mod.rs
+        // TEST_CWD_LOCK 注释），否则 cmd_driver_install 写 .gitattributes
+        // 会落到其他测试的 CWD。
+        let _guard = crate::cmd::TEST_CWD_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join("suture-test-driver-flow");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();

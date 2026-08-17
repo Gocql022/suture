@@ -298,6 +298,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_patch() {
+        // 该测试修改进程级 CWD，必须与同样改 CWD 的测试串行（见 mod.rs
+        // TEST_CWD_LOCK 注释），否则并行时相对路径会落到其他测试的目录。
+        let _guard = crate::cmd::TEST_CWD_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("hello.txt");
         std::fs::write(&file_path, "line one\nline two\nline three\n").unwrap();

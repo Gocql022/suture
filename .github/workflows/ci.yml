@@ -373,6 +373,10 @@ jobs:
         run: cargo check --manifest-path crates/suture-py/Cargo.toml
       - name: Install maturin
         run: pip install maturin
-      - name: Build suture-py wheel
+      - name: Create virtualenv and build suture-py wheel
         working-directory: crates/suture-py
-        run: maturin develop --release
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin
+          maturin develop --release
