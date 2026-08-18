@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# cargo-audit 配置：临时忽略尚无修复版本的安全公告。
+#
+# 被忽略的漏洞均为 RustSec 于 2026-05 ~ 2026-07 新发布、上游尚未发布
+# patched 版本（`patched_versions` 为空）的公告，无法通过依赖升级解决。
+# 上游修复发布后应立即移除对应条目，恢复强制审计。
+#
+# - RUSTSEC-2026-0185 (quinn-proto)：远程内存耗尽（乱序流重组无上限）。
+#   仅通过平台专属传递依赖引入（当前 Windows host 依赖树中不存在）。
+# - RUSTSEC-2026-0187 (lopdf 0.34/0.40)：深嵌套 PDF 对象导致栈溢出。
+#   suture-driver-pdf 直接依赖，无修复版本。
+# - RUSTSEC-2026-0194/0195 (quick-xml 0.39.4/0.40.1)：重复属性名
+#   二次方耗时 + NsReader 命名空间声明无界分配（内存耗尽 DoS）。
+#   suture-driver-docx/pptx 直接依赖，无修复版本。
+# - RUSTSEC-2026-0222 (wasmtime 44.0.1)：引擎间类型索引混淆。
+#   suture-wasm-plugin 使用，CI 已排除该 crate。
+#
+# 验证方式：`cargo audit`（不带 --deny-warnings，unmaintained 类警告不阻断）。
+
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0185",
+    "RUSTSEC-2026-0187",
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+    "RUSTSEC-2026-0222",
+]

@@ -347,6 +347,11 @@ mod tests {
     use std::collections::HashMap;
     use std::net::SocketAddr;
 
+    /// 多节点 TCP 测试共享的串行锁：这些测试跑真实 TCP + 选举（100ms tick、
+    /// 1s 选举超时），并行时 CPU 争抢会导致选举超时/复制超时而 flaky。
+    /// 串行执行让每个集群独占整机资源，大幅降低对时序的敏感度。
+    static CLUSTER_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     fn test_config() -> RaftConfig {
         RaftConfig {
             node_id: 1,
@@ -394,6 +399,7 @@ mod tests {
     /// Multi-node test: 3 nodes over real TCP, leader election + log replication.
     #[tokio::test]
     async fn test_three_node_cluster_over_tcp() {
+        let _guard = CLUSTER_LOCK.lock().await;
         // Bind 3 listeners on ephemeral ports
         let l1 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let l2 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -420,30 +426,21 @@ mod tests {
         let c = |id: u64, peers: Vec<u64>| RaftConfig {
             node_id: id,
             peers,
-            election_timeout: 10,
-            heartbeat_interval: 3,
+            // tick 为 100ms：30 tick = 3s 选举超时、10 tick = 1s 心跳。
+            // 默认 10/3 在 CI 高负载（并行跑整个 workspace 测试）下
+            // tick 延迟会触发选举风暴导致 "no leader"，故放宽。
+            election_timeout: 30,
+            heartbeat_interval: 10,
         };
         let (rt1, _) = RaftRuntime::spawn_with_transport(c(1, vec![2, 3]), Arc::clone(&t1));
         let (rt2, _) = RaftRuntime::spawn_with_transport(c(2, vec![1, 3]), Arc::clone(&t2));
         let (rt3, _) = RaftRuntime::spawn_with_transport(c(3, vec![1, 2]), Arc::clone(&t3));
 
         // Wait for leader election
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(6)).await;
 
-        let leader = if rt1.is_leader() {
-            &rt1 as &RaftRuntime
-        } else if rt2.is_leader() {
-            &rt2 as &RaftRuntime
-        } else if rt3.is_leader() {
-            &rt3 as &RaftRuntime
-        } else {
-            panic!(
-                "no leader: n1={:?} n2={:?} n3={:?}",
-                rt1.state(),
-                rt2.state(),
-                rt3.state()
-            );
-        };
+        let rts = [&rt1, &rt2, &rt3];
+        let (_, leader) = wait_for_leader(&rts, &[1, 2, 3]).await;
 
         leader
             .propose(HubCommand::CreateRepo {
@@ -503,36 +500,51 @@ mod tests {
         let c = |id: u64, peers: Vec<u64>| RaftConfig {
             node_id: id,
             peers,
-            election_timeout: 10,
-            heartbeat_interval: 3,
+            // tick 为 100ms：30 tick = 3s 选举超时、10 tick = 1s 心跳。
+            // 默认 10/3 在 CI 高负载下 tick 延迟会触发选举风暴导致
+            // "no leader"，故放宽。
+            election_timeout: 30,
+            heartbeat_interval: 10,
         };
         let (rt1, _) = RaftRuntime::spawn_with_transport(c(1, vec![2, 3]), Arc::clone(&t1));
         let (rt2, _) = RaftRuntime::spawn_with_transport(c(2, vec![1, 3]), Arc::clone(&t2));
         let (rt3, _) = RaftRuntime::spawn_with_transport(c(3, vec![1, 2]), Arc::clone(&t3));
 
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(6)).await;
 
         (t1, t2, t3, rt1, rt2, rt3, a1, a2, a3)
     }
 
-    fn find_leader<'a>(rts: &'a [&RaftRuntime], ids: &[u64]) -> (u64, &'a RaftRuntime) {
-        for (i, rt) in rts.iter().enumerate() {
-            if rt.is_leader() {
-                return (ids[i], rt);
+    /// 轮询等待集群选出 leader（最多 30 秒），避免 CI 高负载下
+    /// 固定 sleep 后仍未完成选举导致的 "no leader" flaky。
+    async fn wait_for_leader<'a>(
+        rts: &'a [&'a RaftRuntime],
+        ids: &[u64],
+    ) -> (u64, &'a RaftRuntime) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            for (i, rt) in rts.iter().enumerate() {
+                if rt.is_leader() {
+                    return (ids[i], rt);
+                }
             }
+            if std::time::Instant::now() >= deadline {
+                panic!(
+                    "no leader found within 30s: states={:?}",
+                    rts.iter().map(|rt| rt.state()).collect::<Vec<_>>()
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
-        panic!(
-            "no leader found: states={:?}",
-            rts.iter().map(|rt| rt.state()).collect::<Vec<_>>()
-        );
     }
 
     #[tokio::test]
     async fn test_cluster_add_node() {
+        let _guard = CLUSTER_LOCK.lock().await;
         let (_t1, _t2, _t3, rt1, rt2, rt3, a1, _a2, _a3) = spawn_three_node_cluster().await;
         let rts = [&rt1, &rt2, &rt3];
         let ids = [1u64, 2, 3];
-        let (_leader_id, leader) = find_leader(&rts, &ids);
+        let (_leader_id, leader) = wait_for_leader(&rts, &ids).await;
 
         let l4 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let a4 = l4.local_addr().unwrap();
@@ -545,8 +557,9 @@ mod tests {
         let c4 = RaftConfig {
             node_id: 4,
             peers: vec![1, 2, 3],
-            election_timeout: 10,
-            heartbeat_interval: 3,
+            // 与 spawn_three_node_cluster 保持一致：3s 选举超时、1s 心跳
+            election_timeout: 30,
+            heartbeat_interval: 10,
         };
         let (rt4, _) = RaftRuntime::spawn_with_transport(c4, Arc::clone(&t4));
 
@@ -574,10 +587,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_cluster_remove_node() {
+        let _guard = CLUSTER_LOCK.lock().await;
         let (_t1, _t2, _t3, rt1, rt2, rt3, _a1, _a2, _a3) = spawn_three_node_cluster().await;
         let rts = [&rt1, &rt2, &rt3];
         let ids = [1u64, 2, 3];
-        let (_leader_id, leader) = find_leader(&rts, &ids);
+        let (_leader_id, leader) = wait_for_leader(&rts, &ids).await;
 
         let remove_id = if !rt3.is_leader() { 3 } else { 2 };
         let remove_rt = if remove_id == 2 { &rt2 } else { &rt3 };
@@ -604,16 +618,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_cluster_reconnect() {
-        let (_t1, _t2, t3, rt1, rt2, rt3, _a1, _a2, a3) = spawn_three_node_cluster().await;
+        let _guard = CLUSTER_LOCK.lock().await;
+        let (_t1, t2, t3, rt1, rt2, rt3, _a1, a2, a3) = spawn_three_node_cluster().await;
         let rts = [&rt1, &rt2, &rt3];
         let ids = [1u64, 2, 3];
-        let (leader_id, leader) = find_leader(&rts, &ids);
+        let (leader_id, leader) = wait_for_leader(&rts, &ids).await;
 
+        // 断开一个非 leader 节点（优先 node 3；若 3 是 leader 则断开 2），
+        // 避免旧代码 `unreachable!` 在随机选举中 node 3 当选时必然 panic。
         let disconnect_id = if leader_id != 3 { 3 } else { 2 };
-        if disconnect_id == 3 {
-            t3.remove_peer(3).await;
-        } else {
-            unreachable!("for simplicity this test always disconnects node 3");
+        match disconnect_id {
+            3 => t3.remove_peer(3).await,
+            2 => t2.remove_peer(2).await,
+            _ => unreachable!(),
         }
 
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -626,7 +643,11 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        t3.add_peer(3, a3).await;
+        match disconnect_id {
+            3 => t3.add_peer(3, a3).await,
+            2 => t2.add_peer(2, a2).await,
+            _ => unreachable!(),
+        }
 
         tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -640,10 +661,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_cluster_partition_heal() {
+        let _guard = CLUSTER_LOCK.lock().await;
         let (_t1, _t2, t3, rt1, rt2, rt3, _a1, _a2, a3) = spawn_three_node_cluster().await;
         let rts = [&rt1, &rt2, &rt3];
         let ids = [1u64, 2, 3];
-        let (_leader_id, leader) = find_leader(&rts, &ids);
+        let (_leader_id, leader) = wait_for_leader(&rts, &ids).await;
 
         t3.remove_peer(3).await;
 

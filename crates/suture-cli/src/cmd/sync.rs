@@ -427,53 +427,46 @@ pub async fn cmd_sync_start(
     Ok(())
 }
 
+#[cfg(unix)]
 pub fn cmd_sync_stop() -> Result<(), Box<dyn std::error::Error>> {
     let pid = read_pid_file()?;
 
-    match pid {
-        Some(pid) => {
-            #[cfg(unix)]
-            {
-                // SAFETY: Sending SIGTERM to the daemon process is safe for
-                // process management. The pid is read from the PID file and
-                // validated. Return value is checked for errors below.
-                let ret = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-                if ret != 0 {
-                    let errno = std::io::Error::last_os_error();
-                    if errno.raw_os_error() == Some(3) {
-                        remove_pid_file();
-                        remove_last_sync_file();
-                        return Err(format!(
-                            "process {pid} is not running (removed stale PID file)"
-                        )
-                        .into());
-                    }
-                    return Err(format!("failed to stop daemon (PID {pid}): {errno}").into());
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                return Err("stopping the daemon is only supported on Unix".into());
-            }
+    let Some(pid) = pid else {
+        return Err("sync daemon is not running".into());
+    };
 
-            println!("sent SIGTERM to sync daemon (PID: {pid})");
-
-            std::thread::sleep(std::time::Duration::from_secs(1));
-
-            if is_process_alive(pid) {
-                println!("warning: daemon may still be running");
-            } else {
-                remove_pid_file();
-                remove_last_sync_file();
-                println!("sync daemon stopped");
-            }
+    // SAFETY: Sending SIGTERM to the daemon process is safe for
+    // process management. The pid is read from the PID file and
+    // validated. Return value is checked for errors below.
+    let ret = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+    if ret != 0 {
+        let errno = std::io::Error::last_os_error();
+        if errno.raw_os_error() == Some(3) {
+            remove_pid_file();
+            remove_last_sync_file();
+            return Err(format!("process {pid} is not running (removed stale PID file)").into());
         }
-        None => {
-            return Err("sync daemon is not running".into());
-        }
+        return Err(format!("failed to stop daemon (PID {pid}): {errno}").into());
+    }
+
+    println!("sent SIGTERM to sync daemon (PID: {pid})");
+
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    if is_process_alive(pid) {
+        println!("warning: daemon may still be running");
+    } else {
+        remove_pid_file();
+        remove_last_sync_file();
+        println!("sync daemon stopped");
     }
 
     Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn cmd_sync_stop() -> Result<(), Box<dyn std::error::Error>> {
+    Err("stopping the daemon is only supported on Unix".into())
 }
 
 pub fn cmd_sync_status(
@@ -643,6 +636,7 @@ fn remove_pid_file() {
     let _ = std::fs::remove_file(path);
 }
 
+#[cfg(unix)]
 fn remove_last_sync_file() {
     let path = PathBuf::from(SYNC_LAST_SYNC_FILE);
     let _ = std::fs::remove_file(path);

@@ -1487,8 +1487,29 @@ fn sparse_checkout(
     Ok(())
 }
 
+/// Entry point. Runs the whole CLI on a thread with a large stack so that
+/// debug builds (unoptimized clap-derive parser, huge stack frames) do not
+/// overflow the Windows default 1 MiB main-thread stack — previously even
+/// `suture --version` aborted with "thread 'main' has overflowed its stack".
+fn main() {
+    run_with_large_stack();
+}
+
+/// Spawns `async_main` on a dedicated 64 MiB stack thread. Error paths inside
+/// the CLI call `process::exit` directly, so this returns normally only on
+/// success; a panic here unwinds and aborts with a non-zero exit code.
+fn run_with_large_stack() {
+    std::thread::Builder::new()
+        .name("suture-main".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(async_main)
+        .expect("failed to spawn main thread")
+        .join()
+        .expect("main thread panicked");
+}
+
 #[tokio::main]
-async fn main() {
+async fn async_main() {
     // On Unix, restore default SIGPIPE handling so broken pipes terminate the
     // process silently instead of panicking with a backtrace. This matches the
     // behavior of standard Unix tools (cat, grep, etc.) when piped to `head`.

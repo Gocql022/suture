@@ -436,10 +436,10 @@ mod persist_tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// 使用系统临时目录的绝对路径，避免依赖进程 CWD（其他 crate 的测试会
+    /// set_current_dir，并行时相对路径会落到错误位置）。
     fn temp_path(name: &str) -> PathBuf {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(format!("test_{name}_{}.db", std::process::id()))
+        std::env::temp_dir().join(format!("suture_raft_test_{name}_{}.db", std::process::id()))
     }
 
     #[test]

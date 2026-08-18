@@ -339,7 +339,10 @@ jobs:
       - name: Install protoc (for suture-hub gRPC build.rs)
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Run semver checks
-        run: cargo semver-checks --workspace --exclude suture-fuzz --exclude suture-py --exclude suture-node --exclude suture-e2e --exclude suture-bench --exclude suture-vfs --exclude suture-lsp --exclude suture-daemon --exclude suture-wasm-plugin --exclude suture-desktop
+        # 排除尚未发布到 crates.io 的 crate（cargo-semver-checks 需要 crates.io
+        # 上的基线版本，未发布会直接报错退出）：suture-driver-ui、git-remote-suture、
+        # suture-connector-gsheets、suture-driver-properties。
+        run: cargo semver-checks --workspace --exclude suture-fuzz --exclude suture-py --exclude suture-node --exclude suture-e2e --exclude suture-bench --exclude suture-vfs --exclude suture-lsp --exclude suture-daemon --exclude suture-wasm-plugin --exclude suture-desktop --exclude suture-driver-ui --exclude git-remote-suture --exclude suture-connector-gsheets --exclude suture-driver-properties
 
   test-desktop:
     runs-on: ubuntu-latest
@@ -373,6 +376,10 @@ jobs:
         run: cargo check --manifest-path crates/suture-py/Cargo.toml
       - name: Install maturin
         run: pip install maturin
-      - name: Build suture-py wheel
+      - name: Create virtualenv and build suture-py wheel
         working-directory: crates/suture-py
-        run: maturin develop --release
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin
+          maturin develop --release

@@ -16,6 +16,7 @@ impl<T> UnpoisonMutex<T> for std::sync::Mutex<T> {
     }
 }
 
+#[cfg(unix)]
 pub mod fuse;
 pub mod path_translation;
 pub mod webdav;

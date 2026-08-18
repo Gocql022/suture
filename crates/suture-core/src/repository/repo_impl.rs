@@ -4106,32 +4106,33 @@ impl Repository {
                     new_suture_dir.join("keys"),
                 )?;
             }
+
+            fs::write(
+                new_suture_dir.join("worktree"),
+                self.root.to_string_lossy().as_ref(),
+            )?;
+
+            let branch_name = branch.unwrap_or("main");
+            fs::write(new_suture_dir.join("HEAD"), branch_name)?;
+
+            self.set_config(
+                &format!("worktree.{name}.path"),
+                &abs_path.to_string_lossy(),
+            )?;
+            self.set_config(&format!("worktree.{name}.branch"), branch_name)?;
+
+            let mut wt_repo = Self::open(&abs_path)?;
+            wt_repo.checkout(branch_name)?;
+
+            Ok(())
         }
         #[cfg(not(unix))]
         {
-            return Err(RepoError::Unsupported(
+            let _ = branch;
+            Err(RepoError::Unsupported(
                 "worktrees require symlink support (Unix only)".into(),
-            ));
+            ))
         }
-
-        fs::write(
-            new_suture_dir.join("worktree"),
-            self.root.to_string_lossy().as_ref(),
-        )?;
-
-        let branch_name = branch.unwrap_or("main");
-        fs::write(new_suture_dir.join("HEAD"), branch_name)?;
-
-        self.set_config(
-            &format!("worktree.{name}.path"),
-            &abs_path.to_string_lossy(),
-        )?;
-        self.set_config(&format!("worktree.{name}.branch"), branch_name)?;
-
-        let mut wt_repo = Self::open(&abs_path)?;
-        wt_repo.checkout(branch_name)?;
-
-        Ok(())
     }
 
     /// List all worktrees. Returns the main worktree plus any linked worktrees.

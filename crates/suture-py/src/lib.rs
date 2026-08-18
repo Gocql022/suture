@@ -1139,7 +1139,7 @@ fn is_repo(path: &str) -> bool {
 ///
 /// Exports all public classes and functions for the `suture` Python package.
 #[pymodule]
-fn suture(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn suture_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SutureRepo>()?;
     m.add_class::<RepoStatus>()?;
     m.add_class::<PyLogEntry>()?;

@@ -12,7 +12,12 @@ fn workspace_root() -> PathBuf {
 }
 
 fn suture_bin() -> PathBuf {
-    workspace_root().join("target").join("debug").join("suture")
+    let bin = workspace_root().join("target").join("debug").join("suture");
+    if cfg!(windows) {
+        bin.with_extension("exe")
+    } else {
+        bin
+    }
 }
 
 fn driver_script() -> PathBuf {

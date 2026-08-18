@@ -1171,7 +1171,7 @@ pub async fn execute_command(cmd: DaemonCommand) -> Result<(), Box<dyn Error + S
         DaemonCommand::Stop => {
             let pid = shm::read_pid_file()?;
             println!("stopping daemon (pid {pid})...");
-            signal_process(pid, libc::SIGTERM);
+            signal_process(pid, DAEMON_SIGTERM);
             std::thread::sleep(std::time::Duration::from_millis(500));
             let shm_path = shm::shm_path_for_pid(pid);
             let _ = shm::cleanup_shm(&shm_path);
@@ -1189,7 +1189,7 @@ pub async fn execute_command(cmd: DaemonCommand) -> Result<(), Box<dyn Error + S
         DaemonCommand::Reload => {
             let pid = shm::read_pid_file()?;
             println!("reloading daemon (pid {pid})...");
-            signal_process(pid, libc::SIGHUP);
+            signal_process(pid, DAEMON_SIGHUP);
             println!("reload signal sent");
             Ok(())
         }
@@ -1262,6 +1262,20 @@ fn format_timestamp(ts: u64) -> String {
     format!("{datetime}.{nanos:09}")
 }
 
+/// POSIX signal requesting graceful daemon shutdown (SIGTERM on Unix).
+#[cfg(unix)]
+const DAEMON_SIGTERM: libc::c_int = libc::SIGTERM;
+/// POSIX signal requesting a configuration reload (SIGHUP on Unix).
+#[cfg(unix)]
+const DAEMON_SIGHUP: libc::c_int = libc::SIGHUP;
+/// Placeholder on platforms without POSIX signals.
+#[cfg(not(unix))]
+const DAEMON_SIGTERM: i32 = 0;
+/// Placeholder on platforms without POSIX signals.
+#[cfg(not(unix))]
+const DAEMON_SIGHUP: i32 = 0;
+
+#[cfg(unix)]
 fn signal_process(pid: u32, sig: libc::c_int) {
     // SAFETY: libc::kill is safe to call for inter-process signaling. The pid
     // is obtained from the daemon's PID file and validated before this call.
@@ -1269,6 +1283,13 @@ fn signal_process(pid: u32, sig: libc::c_int) {
     unsafe {
         libc::kill(pid as libc::pid_t, sig);
     }
+}
+
+#[cfg(not(unix))]
+fn signal_process(_pid: u32, _sig: i32) {
+    // POSIX signals are not available on this platform. The caller still
+    // performs PID file / SHM cleanup, so stopping is best-effort here.
+    tracing::warn!("signal-based process control is not supported on this platform");
 }
 
 fn now_nanos() -> u64 {
