@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [5.3.2-action] - 2026-08-19
+
+### Fixed
+- **CI release gating** - exclude unreleased crates from semver checks and fix GitHub release comment permissions for the semantic merge workflow
+- **UI merge behavior** - preserve both sides' new scenes during partial merges and keep property ordering stable in `.ui` merges
+- **Install script / merge driver** - keep driver commands on the relative `suture` executable so paths with spaces do not break Git config or shell invocation
+
 ## [5.3.1-action] - 2026-08-14
 
 ### Added
