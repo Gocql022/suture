@@ -1,9 +1,9 @@
 # Suture Version
 
-- **Version:** 5.3.1-action
+- **Version:** 5.3.2-action
 - **Crates:** 37 publishable to crates.io, 45 in workspace (1 excluded: suture-py)
 - **Status:** v11.3 complete. CI green. Production path clear.
-- **Last Updated:** 2026-08-14
+- **Last Updated:** 2026-08-19
 - **Rust:** 1.94.1 (pinned), Edition 2024
 
 ## Quality Gates
