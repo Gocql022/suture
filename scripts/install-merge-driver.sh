@@ -192,7 +192,9 @@ create_gitattributes() {
 *.xsl merge=xml
 *.svg merge=xml
 *.ui merge=ui
-*.ui -text
+# *.ui (Actions IDE 界面文件) 由 IDE 保存为 CRLF:统一按 CRLF 归一化,
+# 避免 IDE 保存(CRLF) 与仓库基线(LF) 之间的行尾差异被当成整文件修改。
+*.ui text eol=crlf
 *.csv merge=csv
 *.tsv merge=csv
 *.md merge=md
@@ -301,7 +303,11 @@ uninstall() {
     if [ -f ".gitattributes" ]; then
         local tmp
         tmp="$(mktemp)"
-        grep -v "merge=json\|merge=yaml\|merge=toml\|merge=xml\|merge=ui\|merge=csv\|merge=md\|merge=docx\|merge=xlsx\|merge=pptx" .gitattributes > "$tmp" 2>/dev/null || true
+        # 移除 merge= 行,以及本脚本为 *.ui 添加的行尾条目(含旧版 -text)
+        grep -v "merge=json\|merge=yaml\|merge=toml\|merge=xml\|merge=ui\|merge=csv\|merge=md\|merge=docx\|merge=xlsx\|merge=pptx" .gitattributes \
+            | grep -v "^\*\.ui[[:space:]]\+text[[:space:]]\+eol=crlf[[:space:]]*$" \
+            | grep -v "^\*\.ui[[:space:]]\+-text[[:space:]]*$" \
+            | grep -v "^\*\.ui[[:space:]]\+binary[[:space:]]*$" > "$tmp" 2>/dev/null || true
         if [ -s "$tmp" ]; then
             mv "$tmp" .gitattributes
         else

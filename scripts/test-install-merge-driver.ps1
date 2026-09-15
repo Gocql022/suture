@@ -159,11 +159,13 @@ try {
         $jsonPat = $attrContent -match '^\*\.json\s+merge=json$' -or $attrContent -match "\*\.json\s+merge=json"
         $docxPat = $attrContent -match "\*\.docx\s+merge=docx"
         $uiPat = $attrContent -match "\*\.ui\s+merge=ui"
-        $uiTextPat = $attrContent -match "\*\.ui\s+-text"
+        $uiEolPat = $attrContent -match "\*\.ui\s+text\s+eol=crlf"
+        $uiNoTextPat = $attrContent -match "\*\.ui\s+-text"
         Assert $jsonPat "attributes 含 *.json merge=json"
         Assert $docxPat "attributes 含 *.docx merge=docx"
         Assert $uiPat "attributes 含 *.ui merge=ui"
-        Assert $uiTextPat "attributes 含 *.ui -text(禁止行尾转换)"
+        Assert $uiEolPat "attributes 含 *.ui text eol=crlf(统一 CRLF 行尾)"
+        Assert (-not $uiNoTextPat) "attributes 不含 *.ui -text(避免 IDE 保存后整文件差异)"
     }
 
     # ------------------------------------------------------------------
@@ -189,6 +191,11 @@ try {
         $lines = @(Get-Content $cfgAttr2 | Where-Object { $_ -match '^\*.*merge=' })
         $dups = @($lines | Group-Object | Where-Object { $_.Count -gt 1 })
         Assert (-not $dups) "attributes 无重复 merge 条目" "重复: $($dups.Name -join ',')"
+        # 附加属性条目同样必须幂等(重复安装不得产生多条 *.ui text eol=crlf)
+        $uiEolLines = @(Get-Content $cfgAttr2 | Where-Object { $_ -match '^\*\.ui\s+text\s+eol=crlf\s*$' })
+        Assert ($uiEolLines.Count -eq 1) "attributes 中 *.ui text eol=crlf 恰好 1 条" "(出现 $($uiEolLines.Count) 次)"
+        $uiLegacyLines = @(Get-Content $cfgAttr2 | Where-Object { $_ -match '^\*\.ui\s+(-text|binary)\s*$' })
+        Assert ($uiLegacyLines.Count -eq 0) "attributes 中无遗留 *.ui -text/binary 条目" "(出现 $($uiLegacyLines.Count) 次)"
     }
     $curUserPath2 = [Environment]::GetEnvironmentVariable("PATH", "User")
     $count = @($curUserPath2 -split ';' | Where-Object { $_ -eq $InstallBin }).Count

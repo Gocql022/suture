@@ -7,7 +7,7 @@
     使用 Suture 的语义合并.
 
     本脚本的功能:
-      1. 定位 suture 可执行文件(优先已安装 > 下载官方二进制 > 编译安装)
+      1. 定位 suture 可执行文件(优先脚本同目录 > 下载官方二进制 > 编译安装)
       2. 交互式引导选择安装位置与 PATH 写入位置
          (也可用 -InstallDir / -UserPath 参数直接指定,用于非交互/脚本调用)
       3. 为每种格式注册一个 Git merge driver,并显式指定 --driver <格式>
@@ -106,10 +106,14 @@ $Script:Patterns = @(
 )
 
 # 附加 attributes 属性条目: 模式 -> 属性(与上面的 merge= 条目共存于 attributes 文件)
-# *.ui(Actions IDE 界面文件)本质是 XML,但禁止 git 行尾转换(-text),
-# 避免 CRLF/LF 规范化破坏文件;合并由 ui driver处理(两者互不冲突).
+# *.ui(Actions IDE 界面文件)由 IDE 保存为 CRLF,因此统一按 CRLF 归一化:
+#   - 若用 -text 禁止转换,IDE 保存(CRLF) 与仓库基线(LF) 之间的纯行尾差异
+#     会被 git 当成整文件修改(实测 72107 行全变,而真实改动只有 2 行);
+#   - 用 text eol=crlf 后差异精确收敛到真实改动。
+# 合并仍由 ui driver 处理(两者互不冲突;行尾统一后行级 fallback 也不会误报冲突)。
+# 旧版本安装脚本写入的 "*.ui -text" 会被自动迁移为本条目。
 $Script:ExtraAttributes = @(
-    @{ Pattern = "*.ui"; Attr = "-text" }
+    @{ Pattern = "*.ui"; Attr = "text eol=crlf" }
 )
 
 function Get-DriverForPattern {
@@ -471,15 +475,15 @@ function Install-SutureBinary {
         Fail "无法创建安装目录 $DestDir(可能需要管理员权限).请以管理员身份运行 PowerShell,或使用 -InstallDir 指定可写目录(如 $HOME\suture\bin)."
     }
 
-    # 4) 优先下载官方二进制,失败则尝试脚本同目录的 suture.exe,再编译安装
-    if (Download-SutureBinary $DestDir) {
-        Ok "  已通过官方二进制安装: $inDir"
-        return $inDir
-    }
-    Warn "  官方二进制下载失败,尝试脚本同目录的 suture.exe..."
+    # 4) 优先使用脚本同目录的 suture.exe(存在则直接复制;不存在则静默跳过,不警告),
+    #    否则下载官方二进制,最后尝试编译安装
     if (Test-Path $LocalExe) {
         Copy-Item $LocalExe $inDir -Force
         Ok "  已从脚本同目录复制: $LocalExe"
+        return $inDir
+    }
+    if (Download-SutureBinary $DestDir) {
+        Ok "  已通过官方二进制安装: $inDir"
         return $inDir
     }
     Warn "  官方二进制下载失败,尝试编译安装..."
@@ -572,21 +576,46 @@ function Ensure-Attributes {
         $added++
     }
 
-    # 附加属性条目(如 *.ui -text):与 merge= 条目独立,同样保持幂等
+    # 附加属性条目(如 *.ui text eol=crlf):与 merge= 条目独立,同样保持幂等
     foreach ($extra in $Script:ExtraAttributes) {
         $entry = "$($extra.Pattern) $($extra.Attr)"
+        $patPrefix = $extra.Pattern.Replace(".", '\.').Replace("*", '\*')
+
+        # 已存在完全相同的条目 -> 幂等跳过
         if ($lines -contains $entry) {
             continue
         }
-        # 已有该模式的其他 text 相关条目(text / -text / binary)则跳过
+
+        # 迁移:本脚本旧版本写入的 "-text" / "binary" 已被证实会让
+        # IDE 保存(CRLF) 与仓库基线(LF) 之间的纯行尾差异被 git 当成整文件修改,
+        # 因此主动替换为本脚本当前条目(多条重复的旧行只保留一条)。
+        $legacyRx = "^${patPrefix}\s+(-text|binary)\s*$"
+        $legacy = @($lines | Where-Object { $_ -match $legacyRx })
+        if ($legacy.Count -gt 0) {
+            $migrated = $false
+            $newLines = @()
+            foreach ($l in $lines) {
+                if ($l -match $legacyRx) {
+                    if (-not $migrated) { $newLines += $entry; $migrated = $true }
+                } else {
+                    $newLines += $l
+                }
+            }
+            $lines = $newLines
+            Ok "  $($extra.Pattern): migrated '$($legacy[0])' -> '$entry'"
+            $added++
+            continue
+        }
+
+        # 已有该模式的其他 text 条目(如用户自定义 text eol=lf)则跳过
         # (不覆盖用户配置)
-        $patPrefix = $extra.Pattern.Replace(".", '\.').Replace("*", '\*')
-        $already = $lines | Where-Object { $_ -match "^${patPrefix}\s+(text|-text|binary)(\s|$)" }
+        $already = $lines | Where-Object { $_ -match "^${patPrefix}\s+text(\s|$)" }
         if ($already) {
-            Warn "  $($extra.Pattern) already has a text/binary entry ('$($already[0])') - keeping it"
+            Warn "  $($extra.Pattern) already has a text entry ('$($already[0])') - keeping it"
             $skipped++
             continue
         }
+
         $lines += $entry
         $added++
     }
@@ -647,18 +676,25 @@ function Test-Configuration {
         $attrLines = @(Get-Content $attrFile)
         $count = @($attrLines | Where-Object { $_ -match "merge=" }).Count
         Ok "  attributes ($attrFile): $count merge= pattern(s)"
-        # 验证附加属性条目(如 *.ui -text);等价形式(text/binary)也算通过
+        # 验证附加属性条目(如 *.ui text eol=crlf);
+        # 完全匹配优先;否则只要存在该模式的 text 条目(text eol=... / text)即算通过。
+        # 注意:旧版 "-text"/"binary" 会导致 IDE 保存后整文件行尾差异,不视为通过。
         foreach ($extra in $Script:ExtraAttributes) {
             $entry = "$($extra.Pattern) $($extra.Attr)"
             if ($attrLines -contains $entry) {
                 Ok "  $entry present"
             } else {
                 $patPrefix = $extra.Pattern.Replace(".", '\.').Replace("*", '\*')
-                $hasText = $attrLines | Where-Object { $_ -match "^${patPrefix}\s+(text|-text|binary)(\s|$)" }
+                $hasText = $attrLines | Where-Object { $_ -match "^${patPrefix}\s+text(\s|$)" }
                 if ($hasText) {
-                    Ok "  $($extra.Pattern) has equivalent text/binary entry: $($hasText[0])"
+                    Ok "  $($extra.Pattern) has equivalent text entry: $($hasText[0])"
                 } else {
-                    Warn "  $entry missing - re-run the installer to add it"
+                    $legacy = $attrLines | Where-Object { $_ -match "^${patPrefix}\s+(-text|binary)\s*$" }
+                    if ($legacy) {
+                        Warn "  $($extra.Pattern) uses legacy '$($legacy[0])' - re-run the installer to migrate it"
+                    } else {
+                        Warn "  $entry missing - re-run the installer to add it"
+                    }
                     $errors++
                 }
             }
@@ -705,7 +741,7 @@ function Uninstall-Configuration {
     Ok "  git config cleaned"
 
     # 从两个候选 attributes 文件中移除本脚本添加的条目
-    # (merge= 行 + 附加属性行,如 *.ui -text)
+    # (merge= 行 + 附加属性行,如 *.ui text eol=crlf)
     foreach ($attrFile in @((Get-AttributesFile $true), (Get-AttributesFile $false))) {
         if (-not (Test-Path $attrFile)) { continue }
         $excludeRx = @()
@@ -713,7 +749,10 @@ function Uninstall-Configuration {
             $excludeRx += "^\s*$($pat.Replace(".", '\.').Replace("*", '\*'))\s+merge="
         }
         foreach ($extra in $Script:ExtraAttributes) {
-            $excludeRx += "^\s*$($extra.Pattern.Replace(".", '\.').Replace("*", '\*'))\s+$([regex]::Escape($extra.Attr))\s*$"
+            $patEsc = $extra.Pattern.Replace(".", '\.').Replace("*", '\*')
+            $excludeRx += "^\s*$patEsc\s+$([regex]::Escape($extra.Attr))\s*$"
+            # 旧版本安装脚本写入的 "-text"/"binary" 条目也一并清理
+            $excludeRx += "^\s*$patEsc\s+(-text|binary)\s*$"
         }
         $allLines = @(Get-Content $attrFile)
         $kept = @($allLines | Where-Object {

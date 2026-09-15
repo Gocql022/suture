@@ -546,8 +546,11 @@ impl SutureDriver for UiDriver {
         let trailing_newline =
             base.ends_with('\n') || ours.ends_with('\n') || theirs.ends_with('\n');
 
+        // 输出行尾必须跟随输入格式输出
+        let uses_crlf = base.contains("\r\n") || ours.contains("\r\n") || theirs.contains("\r\n");
+
         let mut result = String::new();
-        result.push_str(leading);
+        result.push_str(&leading.replace("\r\n", "\n"));
         Self::merge_elements(
             base_doc.root_element(),
             ours_doc.root_element(),
@@ -557,14 +560,15 @@ impl SutureDriver for UiDriver {
         .map_or_else(
             || Ok(None),
             |merged| {
-                // .ui 固定 CRLF：String::replace 返回新 String（不改原值），
-                // 直接把转换结果推入输出。
-                result.push_str(&merged.replace('\n', "\r\n"));
+                result.push_str(&merged.replace("\r\n", "\n"));
                 if trailing_newline {
-                    // 尾随换行也需与输出行尾一致（.ui 固定 CRLF，不能 push 裸 \n）
-                    result.push_str("\r\n");
+                    result.push('\n');
                 }
-                Ok(Some(result))
+                Ok(Some(if uses_crlf {
+                    result.replace('\n', "\r\n")
+                } else {
+                    result
+                }))
             },
         )
     }
@@ -1459,35 +1463,44 @@ mod tests {
         );
     }
 
-    /// .ui 固定输出 CRLF 行尾：成功合并（无冲突）时，输出必须全 CRLF
-    /// （含尾随换行），不得出现裸 LF——否则 `-text` 下 git 逐字节比较，
-    /// 行尾不一致会导致解决冲突后全文件 diff。
+    // 输出行尾必须跟随输入格式输出
     #[test]
-    fn test_ui_merge_success_fixed_crlf() {
+    fn test_ui_merge_line_ending_follows_input() {
         let driver = UiDriver::new();
         // ours 改 STR_DRINK_SOME_WATER.x，theirs 改同一元素的 y（不同属性）
         // → 语义层可自动合并，验证成功路径的行尾
-        let base = build_ui_file(80, "0x0014", "0x0106");
+        let base = build_ui_file(80, "0x0014", "0x0106"); // build_ui_file 产出 CRLF
         let ours = build_ui_file(80, "0x0012", "0x0106");
         let theirs = build_ui_file(80, "0x0014", "0x0122");
 
+        // --- CRLF 输入 → CRLF 输出 ---
         let merged = driver
             .merge(&base, &ours, &theirs)
             .unwrap()
             .expect("different attrs must auto-merge");
         assert!(merged.contains("0x0012"), "ours x change applied");
         assert!(merged.contains("0x0122"), "theirs y change applied");
-
-        // 全 CRLF：去掉 \r\n 后不得残留任何 \n（即无裸 LF）
         assert!(
             !merged.replace("\r\n", "").contains('\n'),
-            "output must use CRLF line endings only"
+            "CRLF input must yield CRLF-only output (no bare LF)"
         );
-        // 尾随换行也必须是 CRLF
         assert!(merged.ends_with("\r\n"), "trailing CRLF preserved");
-        // 可被 XML 解析（输出有效）
         let doc = roxmltree::Document::parse(&merged).unwrap();
         assert_eq!(doc.root_element().tag_name().name(), "ui-rad");
+
+        // --- LF 输入 → LF 输出（前导内容也不得残留 CR） ---
+        let to_lf = |s: &str| s.replace("\r\n", "\n");
+        let merged_lf = driver
+            .merge(&to_lf(&base), &to_lf(&ours), &to_lf(&theirs))
+            .unwrap()
+            .expect("different attrs must auto-merge");
+        assert!(
+            !merged_lf.contains('\r'),
+            "LF input must yield LF-only output (no CR) - got CRLF in leading or body"
+        );
+        assert!(merged_lf.ends_with('\n'), "trailing LF preserved");
+        let doc_lf = roxmltree::Document::parse(&merged_lf).unwrap();
+        assert_eq!(doc_lf.root_element().tag_name().name(), "ui-rad");
     }
 
     proptest! {
