@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-and-push:
-    # Disabled on this fork (v5.3.2-action): no GHCR image publish needed.
+    # Disabled on this fork (v5.3.3-action): no GHCR image publish needed.
     if: false
     runs-on: ubuntu-latest
     permissions:

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [5.3.3-action] - 2026-09-15
+
+### Fixed
+- **UI line endings** — `.ui` merge output now follows the input line endings instead of hard-coded CRLF, satisfying the Git merge driver contract (`text eol=crlf` normalizes the three temporary files to LF, so writing CRLF back made `add_cacheinfo` refresh fail with exit 128 and aborted the merge). The leading content (XML declaration and fixed comments) is normalized together with the body so no bare LF/CR is left behind.
+- **`.ui` attributes** — install scripts now write `*.ui text eol=crlf` instead of `*.ui -text`. With `-text` Git performed no EOL normalization, so an IDE save (CRLF) against an LF baseline produced a whole-file diff (72107/72107 lines) for a 2-line change; with `text eol=crlf` the diff converges to the real change (measured 2/2). Existing `-text`/`binary` entries written by older scripts are migrated automatically, verification no longer treats `-text` as valid, and uninstall removes both old and new entries.
+- **Install script** — `install.ps1` now prefers a `suture.exe` sitting next to the script (silently, no warning) before downloading the official binary.
+
 ## [5.3.2-action] - 2026-08-19
 
 ### Fixed
